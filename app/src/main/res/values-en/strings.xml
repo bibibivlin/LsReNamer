@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">L\'s ReNamer</string>
+    <string name="button_source">Select source</string>
+    <string name="button_target">Select target</string>
+    <string name="button_process">Start processing</string>
+    <string name="text_source">Source folder: %s</string>
+    <string name="text_target">Target folder: %s</string>
+    <string name="process_success">Processing completed, %d files processed successfully</string>
+    <string name="processing">Processing...</string>
+</resources>

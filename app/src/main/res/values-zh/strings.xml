@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">L\'s ReNamer</string>
+    <string name="button_source">选择源目录</string>
+    <string name="button_target">选择目的地</string>
+    <string name="button_process">开始处理</string>
+    <string name="text_source">源目录：%s</string>
+    <string name="text_target">目标目录：%s</string>
+    <string name="process_success">处理完成，成功处理%d个文件</string>
+    <string name="processing">处理中……</string>
+</resources>
