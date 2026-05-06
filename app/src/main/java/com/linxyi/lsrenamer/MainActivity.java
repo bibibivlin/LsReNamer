@@ -6,9 +6,9 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.ParcelFileDescriptor;
 import android.provider.DocumentsContract;
 import android.util.Log;
-import android.view.View;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -25,7 +25,9 @@ import androidx.documentfile.provider.DocumentFile;
 import androidx.exifinterface.media.ExifInterface;
 
 import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.nio.channels.FileChannel;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -165,7 +167,7 @@ public class MainActivity extends AppCompatActivity {
                     String uriStr = arr.getString(i);
                     try {
                         Uri uri = Uri.parse(uriStr);
-                        if (!isInvalidUri(uri)) {
+                        if (isInvalidUri(uri)) {
                             uris.add(uriStr);
                         }
                     } catch (Exception ignored) {
@@ -180,7 +182,7 @@ public class MainActivity extends AppCompatActivity {
             if (oldUri != null) {
                 try {
                     Uri uri = Uri.parse(oldUri);
-                    if (!isInvalidUri(uri)) {
+                    if (isInvalidUri(uri)) {
                         uris.add(oldUri);
                     }
                 } catch (Exception ignored) {
@@ -259,9 +261,9 @@ public class MainActivity extends AppCompatActivity {
     private boolean isInvalidUri(Uri uri) {
         try {
             DocumentFile df = DocumentFile.fromTreeUri(this, uri);
-            return df == null || !df.exists();
+            return df != null && df.exists();
         } catch (Exception e) {
-            return true;
+            return false;
         }
     }
 
@@ -391,21 +393,71 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private boolean copyFile(DocumentFile source, DocumentFile targetDir, String newName) {
+        Uri srcUri = source.getUri();
+        String originalName = source.getName();
+        Uri currentSrcUri = srcUri;
+
+        try {
+            String srcDocId = DocumentsContract.getTreeDocumentId(sourceDirUri);
+            Uri srcParentUri = DocumentsContract.buildDocumentUriUsingTree(sourceDirUri, srcDocId);
+            String dstDocId = DocumentsContract.getTreeDocumentId(targetDirUri);
+            Uri dstParentUri = DocumentsContract.buildDocumentUriUsingTree(targetDirUri, dstDocId);
+
+            Uri renamedUri = null;
+            try {
+                renamedUri = DocumentsContract.renameDocument(
+                        getContentResolver(), currentSrcUri, newName);
+            } catch (Exception ignored) {
+            }
+
+            if (renamedUri != null) {
+                currentSrcUri = renamedUri;
+                try {
+                    Uri movedUri = DocumentsContract.moveDocument(
+                            getContentResolver(), renamedUri, srcParentUri, dstParentUri);
+                    if (movedUri != null) {
+                        return true;
+                    }
+                } catch (Exception ignored) {
+                }
+                try {
+                    assert originalName != null;
+                    DocumentsContract.renameDocument(
+                            getContentResolver(), renamedUri, originalName);
+                    currentSrcUri = srcUri;
+                } catch (Exception ignored) {
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
         try {
             DocumentFile newFile = targetDir.createFile(getMimeType(newName), newName);
             if (newFile == null) return false;
-            try (InputStream in = getContentResolver().openInputStream(source.getUri());
-                 OutputStream out = getContentResolver().openOutputStream(newFile.getUri())) {
-                byte[] buf = new byte[1024];
-                int len;
-                while ((len = Objects.requireNonNull(in).read(buf)) > 0) {
-                    Objects.requireNonNull(out).write(buf, 0, len);
+
+            try (ParcelFileDescriptor srcPfd = getContentResolver()
+                    .openFileDescriptor(currentSrcUri, "r");
+                 ParcelFileDescriptor dstPfd = getContentResolver()
+                    .openFileDescriptor(newFile.getUri(), "rw")) {
+                if (srcPfd == null || dstPfd == null) return false;
+
+                try (FileInputStream fis = new FileInputStream(srcPfd.getFileDescriptor());
+                     FileOutputStream fos = new FileOutputStream(dstPfd.getFileDescriptor())) {
+                    FileChannel srcChannel = fis.getChannel();
+                    FileChannel dstChannel = fos.getChannel();
+                    long size = srcChannel.size();
+                    long transferred = 0;
+                    while (transferred < size) {
+                        transferred += dstChannel.transferFrom(
+                                srcChannel, transferred, size - transferred);
+                    }
                 }
             }
-            source.delete();
+
+            DocumentsContract.deleteDocument(getContentResolver(), currentSrcUri);
             return true;
         } catch (Exception e) {
-            Log.e("CopyFile", "Error copying file: " + source.getUri(), e);
+            Log.e("CopyFile", "Error copying file: " + currentSrcUri, e);
             return false;
         }
     }

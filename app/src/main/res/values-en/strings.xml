@@ -6,7 +6,7 @@
     <string name="text_source">Source: %s</string>
     <string name="text_target">Target: %s</string>
     <string name="process_success">Done, processed %d file(s)</string>
-    <string name="processing">Processing...</string>
+    <string name="processing">Processing…</string>
     <string name="dialog_source_title">Select Source</string>
     <string name="dialog_target_title">Select Destination</string>
     <string name="no_history">No history</string>

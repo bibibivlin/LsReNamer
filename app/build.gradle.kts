@@ -1,19 +1,21 @@
+@file:Suppress("UnstableApiUsage")
+
 plugins {
     alias(libs.plugins.android.application)
 }
 
 android {
     namespace = "com.linxyi.lsrenamer"
-    compileSdk = 36
+    compileSdk = 37
     androidResources {
         generateLocaleConfig = true
     }
     defaultConfig {
         applicationId = "com.linxyi.lsrenamer"
         minSdk = 35
-        targetSdk = 36
-        versionCode = 4
-        versionName = "1.3"
+        targetSdk = 37
+        versionCode = 5
+        versionName = "1.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
