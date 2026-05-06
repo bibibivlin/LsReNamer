@@ -8,6 +8,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.DocumentsContract;
 import android.util.Log;
+import android.view.View;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -27,11 +28,15 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+
+import org.json.JSONArray;
 
 public class MainActivity extends AppCompatActivity {
     private ActivityResultLauncher<Intent> sourceDirLauncher;
@@ -41,8 +46,9 @@ public class MainActivity extends AppCompatActivity {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private AlertDialog progressDialog;
     private static final String PREFS_NAME = "AppPrefs";
-    private static final String KEY_SOURCE_URI = "source_uri";
-    private static final String KEY_TARGET_URI = "target_uri";
+    private static final String KEY_SOURCE_URIS = "source_uris";
+    private static final String KEY_TARGET_URIS = "target_uris";
+    private static final int MAX_HISTORY = 5;
     private static final int REQUEST_SOURCE_DIR = 1;
     private static final int REQUEST_TARGET_DIR = 2;
 
@@ -72,6 +78,15 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.button_source).setOnClickListener(v -> openDirectory(REQUEST_SOURCE_DIR));
         findViewById(R.id.button_target).setOnClickListener(v -> openDirectory(REQUEST_TARGET_DIR));
         findViewById(R.id.button_process).setOnClickListener(v -> startProcessing());
+
+        findViewById(R.id.textView_source).setOnLongClickListener(v -> {
+            showHistoryDialog(REQUEST_SOURCE_DIR);
+            return true;
+        });
+        findViewById(R.id.textView_target).setOnLongClickListener(v -> {
+            showHistoryDialog(REQUEST_TARGET_DIR);
+            return true;
+        });
     }
 
     private void handleDirectoryResult(ActivityResult result, int requestCode) {
@@ -84,15 +99,7 @@ public class MainActivity extends AppCompatActivity {
                         (Intent.FLAG_GRANT_READ_URI_PERMISSION |
                                 Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
                 );
-                SharedPreferences.Editor editor = getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit();
-                if (requestCode == REQUEST_SOURCE_DIR) {
-                    sourceDirUri = uri;
-                    editor.putString(KEY_SOURCE_URI, uri.toString());
-                } else if (requestCode == REQUEST_TARGET_DIR) {
-                    targetDirUri = uri;
-                    editor.putString(KEY_TARGET_URI, uri.toString());
-                }
-                editor.apply();
+                addUriToHistory(requestCode, uri);
             } catch (SecurityException e) {
                 Toast.makeText(this, "权限获取失败：" + e.getMessage(), Toast.LENGTH_LONG).show();
             }
@@ -101,32 +108,24 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadSavedUris() {
-        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        String source = prefs.getString(KEY_SOURCE_URI, null);
-        String target = prefs.getString(KEY_TARGET_URI, null);
+        List<String> sourceUris = loadUriHistory(KEY_SOURCE_URIS);
+        List<String> targetUris = loadUriHistory(KEY_TARGET_URIS);
 
-        if (source != null) {
-            sourceDirUri = Uri.parse(source);
-            // 保持持久化权限
+        if (!sourceUris.isEmpty()) {
+            sourceDirUri = Uri.parse(sourceUris.get(0));
             getContentResolver().takePersistableUriPermission(
                     sourceDirUri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION |
                             Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             );
-            if (isInvalidUri(sourceDirUri)) {
-                sourceDirUri = null;
-            }
         }
-        if (target != null) {
-            targetDirUri = Uri.parse(target);
+        if (!targetUris.isEmpty()) {
+            targetDirUri = Uri.parse(targetUris.get(0));
             getContentResolver().takePersistableUriPermission(
                     targetDirUri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION |
                             Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             );
-            if (isInvalidUri(targetDirUri)) {
-                targetDirUri = null;
-            }
         }
     }
 
@@ -143,16 +142,118 @@ public class MainActivity extends AppCompatActivity {
         ((TextView) findViewById(R.id.textView_source)).setText(
                 sourceDirUri != null ?
                         String.format(getString(R.string.text_source),
-                                getPathFromUri(sourceDirUri).replace("/tree/primary:", "")) :
+                                getDisplayPath(sourceDirUri)) :
                         ""
         );
         ((TextView) findViewById(R.id.textView_target)).setText(
                 targetDirUri != null ?
                         String.format(getString(R.string.text_target),
-                                getPathFromUri(targetDirUri).replace("/tree/primary:", "")) :
+                                getDisplayPath(targetDirUri)) :
                         ""
         );
 
+    }
+
+    private List<String> loadUriHistory(String key) {
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        List<String> uris = new ArrayList<>();
+        String json = prefs.getString(key, null);
+        if (json != null) {
+            try {
+                JSONArray arr = new JSONArray(json);
+                for (int i = 0; i < arr.length(); i++) {
+                    String uriStr = arr.getString(i);
+                    try {
+                        Uri uri = Uri.parse(uriStr);
+                        if (!isInvalidUri(uri)) {
+                            uris.add(uriStr);
+                        }
+                    } catch (Exception ignored) {
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        if (uris.isEmpty()) {
+            String oldKey = key.equals(KEY_SOURCE_URIS) ? "source_uri" : "target_uri";
+            String oldUri = prefs.getString(oldKey, null);
+            if (oldUri != null) {
+                try {
+                    Uri uri = Uri.parse(oldUri);
+                    if (!isInvalidUri(uri)) {
+                        uris.add(oldUri);
+                    }
+                } catch (Exception ignored) {
+                }
+                prefs.edit().remove(oldKey).apply();
+            }
+        }
+        return uris;
+    }
+
+    private void saveUriHistory(String key, List<String> uris) {
+        JSONArray arr = new JSONArray();
+        for (String uri : uris) {
+            arr.put(uri);
+        }
+        getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                .edit().putString(key, arr.toString()).apply();
+    }
+
+    private void addUriToHistory(int requestCode, Uri uri) {
+        String key = requestCode == REQUEST_SOURCE_DIR ? KEY_SOURCE_URIS : KEY_TARGET_URIS;
+        List<String> uris = loadUriHistory(key);
+        uris.remove(uri.toString());
+        uris.add(0, uri.toString());
+        while (uris.size() > MAX_HISTORY) {
+            uris.remove(uris.size() - 1);
+        }
+        saveUriHistory(key, uris);
+        if (requestCode == REQUEST_SOURCE_DIR) {
+            sourceDirUri = uri;
+        } else {
+            targetDirUri = uri;
+        }
+    }
+
+    private String getDisplayPath(Uri uri) {
+        String path = getPathFromUri(uri);
+        if (path != null) {
+            return path.replace("/tree/primary:", "").replace("/tree/", "");
+        }
+        return "";
+    }
+
+    private void showHistoryDialog(int requestCode) {
+        String key = requestCode == REQUEST_SOURCE_DIR ? KEY_SOURCE_URIS : KEY_TARGET_URIS;
+        List<String> uris = loadUriHistory(key);
+        if (uris.isEmpty()) {
+            Toast.makeText(this, getString(R.string.no_history), Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String[] displayPaths = new String[uris.size()];
+        for (int i = 0; i < uris.size(); i++) {
+            displayPaths[i] = getDisplayPath(Uri.parse(uris.get(i)));
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(requestCode == REQUEST_SOURCE_DIR ?
+                        getString(R.string.dialog_source_title) :
+                        getString(R.string.dialog_target_title))
+                .setItems(displayPaths, (dialog, which) -> {
+                    String selectedUri = uris.get(which);
+                    try {
+                        getContentResolver().takePersistableUriPermission(
+                                Uri.parse(selectedUri),
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION |
+                                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        );
+                    } catch (SecurityException ignored) {
+                    }
+                    addUriToHistory(requestCode, Uri.parse(selectedUri));
+                    updateDirectoryDisplay();
+                })
+                .setNegativeButton(getString(android.R.string.cancel), null)
+                .show();
     }
 
     private boolean isInvalidUri(Uri uri) {

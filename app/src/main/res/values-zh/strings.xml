@@ -8,4 +8,7 @@
     <string name="text_target">目标目录：%s</string>
     <string name="process_success">处理完成，成功处理%d个文件</string>
     <string name="processing">处理中……</string>
+    <string name="dialog_source_title">选择源目录</string>
+    <string name="dialog_target_title">选择目标目录</string>
+    <string name="no_history">暂无历史目录</string>
 </resources>
