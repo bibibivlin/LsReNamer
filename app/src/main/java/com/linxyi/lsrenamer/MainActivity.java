@@ -44,7 +44,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String KEY_SOURCE_URI = "source_uri";
     private static final String KEY_TARGET_URI = "target_uri";
     private static final int REQUEST_SOURCE_DIR = 1;
-    private static final int REQU22EST_TARGET_DIR = 2;
+    private static final int REQUEST_TARGET_DIR = 2;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {

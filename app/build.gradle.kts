@@ -12,8 +12,8 @@ android {
         applicationId = "com.linxyi.lsrenamer"
         minSdk = 35
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
@@ -39,6 +39,7 @@ dependencies {
     implementation(libs.exifinterface)
     implementation(libs.activity.ktx)
     implementation(libs.fragment.ktx)
+    implementation(libs.documentfile)
     testImplementation(libs.junit)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
